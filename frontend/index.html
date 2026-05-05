@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Kifu Replayer · Cờ vây từ ảnh</title>
+<style>
+  :root {
+    --bg: #1d1f23;
+    --panel: #2a2d33;
+    --panel-2: #34383f;
+    --text: #e7e7ea;
+    --muted: #9aa0a6;
+    --accent: #ffb648;
+    --board: #dcb35c;
+    --line: #1f1408;
+    --black: #111;
+    --white: #f8f8f8;
+    --good: #57c98c;
+    --warn: #ffb648;
+    --bad:  #ff6f6f;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI",
+          Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 14px 22px;
+    display: flex; align-items: center; gap: 14px;
+    border-bottom: 1px solid #00000040;
+  }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 12px; }
+  main {
+    display: grid;
+    grid-template-columns: minmax(320px, 1fr) minmax(320px, 1.3fr);
+    gap: 18px;
+    padding: 18px;
+    align-items: start;
+  }
+  @media (max-width: 920px) { main { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 1px 0 #ffffff10 inset, 0 6px 24px #00000050;
+  }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--muted); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+  .upload {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .upload label.drop {
+    border: 2px dashed #5b5f66;
+    border-radius: 10px;
+    padding: 22px;
+    text-align: center;
+    cursor: pointer;
+    transition: background .12s, border-color .12s;
+  }
+  .upload label.drop.hover { background: var(--panel-2); border-color: var(--accent); }
+  .upload input[type=file] { display: none; }
+  .upload .preview {
+    display: none;
+    margin-top: 6px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #000;
+  }
+  .upload .preview img { width: 100%; display: block; max-height: 320px; object-fit: contain; }
+  .btn {
+    background: var(--accent); color: #1c1300; border: 0; padding: 10px 14px;
+    border-radius: 8px; font-weight: 600; cursor: pointer;
+  }
+  .btn[disabled] { opacity: .5; cursor: not-allowed; }
+  .btn.secondary { background: #4a4f57; color: var(--text); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .stat {
+    background: var(--panel-2); border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; color: var(--muted);
+  }
+  .stat b { color: var(--text); }
+  .warnings { color: var(--warn); font-size: 12px; }
+  .replayer { display: flex; flex-direction: column; gap: 12px; }
+  .board-wrap {
+    background: var(--board);
+    border-radius: 8px;
+    padding: 10px;
+    aspect-ratio: 1 / 1;
+    box-shadow: 0 8px 24px #00000060;
+  }
+  .board-wrap canvas { width: 100%; height: 100%; display: block; }
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .controls button {
+    background: var(--panel-2); border: 0; color: var(--text);
+    width: 38px; height: 34px; border-radius: 6px; cursor: pointer; font-size: 16px;
+  }
+  .controls button:hover { background: #4a4f57; }
+  .controls .move-label { font-variant-numeric: tabular-nums; min-width: 80px; text-align: center; }
+  .controls input[type=range] { flex: 1; min-width: 160px; }
+  .moves-list {
+    max-height: 220px; overflow: auto; font-size: 12px;
+    background: var(--panel-2); border-radius: 8px; padding: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .moves-list .m { display: inline-block; padding: 2px 6px; margin: 2px; border-radius: 4px; cursor: pointer; }
+  .moves-list .m.B { background: #111; color: #fff; }
+  .moves-list .m.W { background: #f8f8f8; color: #111; }
+  .moves-list .m.unsupported { outline: 1px dashed var(--warn); }
+  .moves-list .m.active { box-shadow: 0 0 0 2px var(--accent); }
+  .empty-hint { color: var(--muted); text-align: center; padding: 24px; }
+  .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .toggle input { accent-color: var(--accent); }
+  details { background: var(--panel-2); border-radius: 6px; padding: 8px 10px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+  pre.debug {
+    margin: 8px 0 0; max-height: 160px; overflow: auto;
+    background: #16181c; padding: 8px; border-radius: 6px;
+    font: 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .debug-img { margin-top: 8px; max-width: 100%; border-radius: 6px; border: 1px solid #00000050; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kifu Replayer</h1>
+  <span class="sub">Tải ảnh kì phổ cờ vây → mô phỏng từng nước đi</span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>1. Tải ảnh kì phổ</h2>
+    <div class="upload">
+      <label class="drop" id="drop">
+        <strong>Kéo &amp; thả</strong> ảnh hoặc <u>chọn file</u>
+        <div class="sub" style="color: var(--muted); margin-top: 6px;">
+          Hỗ trợ JPG/PNG · ảnh nhìn từ trên xuống, bàn 19×19
+        </div>
+        <input type="file" id="file" accept="image/*" />
+      </label>
+      <div class="preview" id="preview"><img id="previewImg" /></div>
+      <div class="row">
+        <button class="btn" id="goBtn" disabled>Trích xuất nước đi</button>
+        <label class="toggle"><input type="checkbox" id="debugChk" /> debug overlay</label>
+      </div>
+      <div id="status" class="sub" style="color: var(--muted);"></div>
+      <div id="warnings" class="warnings"></div>
+    </div>
+
+    <h2 style="margin-top: 20px;">3. Danh sách nước đi</h2>
+    <div id="movesList" class="moves-list">
+      <div class="empty-hint">Chưa có dữ liệu — tải ảnh và bấm <em>Trích xuất</em>.</div>
+    </div>
+
+    <details style="margin-top: 12px;" id="debugDetails" hidden>
+      <summary>Debug</summary>
+      <pre class="debug" id="debugJson"></pre>
+      <img id="debugImg" class="debug-img" hidden />
+    </details>
+  </section>
+
+  <section class="card replayer">
+    <h2>2. Mô phỏng nước đi</h2>
+    <div class="board-wrap"><canvas id="board" width="800" height="800"></canvas></div>
+    <div class="controls">
+      <button id="firstBtn" title="First">⏮</button>
+      <button id="prevBtn"  title="Prev">◀</button>
+      <button id="playBtn"  title="Play/Pause">▶</button>
+      <button id="nextBtn"  title="Next">▶</button>
+      <button id="lastBtn"  title="Last">⏭</button>
+      <span class="move-label" id="moveLabel">0 / 0</span>
+      <input type="range" id="slider" min="0" max="0" step="1" value="0" />
+      <label class="toggle"><input type="checkbox" id="numChk" checked /> hiện số</label>
+    </div>
+    <div class="row">
+      <span class="stat">Tổng: <b id="totalStones">0</b></span>
+      <span class="stat">Đen: <b id="bCount">0</b></span>
+      <span class="stat">Trắng: <b id="wCount">0</b></span>
+      <span class="stat">Lượt: <b id="curTurn">–</b></span>
+    </div>
+  </section>
+</main>
+
+<script>
+const SIZE = 19;
+
+const els = {
+  drop: document.getElementById('drop'),
+  file: document.getElementById('file'),
+  preview: document.getElementById('preview'),
+  previewImg: document.getElementById('previewImg'),
+  goBtn: document.getElementById('goBtn'),
+  debugChk: document.getElementById('debugChk'),
+  status: document.getElementById('status'),
+  warnings: document.getElementById('warnings'),
+  movesList: document.getElementById('movesList'),
+  debugDetails: document.getElementById('debugDetails'),
+  debugJson: document.getElementById('debugJson'),
+  debugImg: document.getElementById('debugImg'),
+  board: document.getElementById('board'),
+  firstBtn: document.getElementById('firstBtn'),
+  prevBtn: document.getElementById('prevBtn'),
+  playBtn: document.getElementById('playBtn'),
+  nextBtn: document.getElementById('nextBtn'),
+  lastBtn: document.getElementById('lastBtn'),
+  moveLabel: document.getElementById('moveLabel'),
+  slider: document.getElementById('slider'),
+  numChk: document.getElementById('numChk'),
+  totalStones: document.getElementById('totalStones'),
+  bCount: document.getElementById('bCount'),
+  wCount: document.getElementById('wCount'),
+  curTurn: document.getElementById('curTurn'),
+};
+
+let state = {
+  file: null,
+  moves: [],   // sorted ascending by n
+  cursor: 0,   // moves played: 0..moves.length
+  playTimer: null,
+};
+
+// ---------- file picking & upload ----------
+['dragenter','dragover'].forEach(ev =>
+  els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.add('hover'); }));
+['dragleave','drop'].forEach(ev =>
+  els.drop.addEventListener(ev, e => { e.preventDefault(); els.drop.classList.remove('hover'); }));
+els.drop.addEventListener('drop', e => {
+  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+els.file.addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+function handleFile(f) {
+  state.file = f;
+  els.previewImg.src = URL.createObjectURL(f);
+  els.preview.style.display = 'block';
+  els.goBtn.disabled = false;
+  els.status.textContent = `Đã chọn: ${f.name} (${(f.size/1024).toFixed(0)} KB)`;
+}
+
+els.goBtn.addEventListener('click', extract);
+
+async function extract() {
+  if (!state.file) return;
+  els.goBtn.disabled = true;
+  els.status.textContent = 'Đang phân tích bàn cờ... (có thể mất 5–20s lần đầu)';
+  els.warnings.innerHTML = '';
+  const fd = new FormData();
+  fd.append('image', state.file);
+  fd.append('debug', els.debugChk.checked ? 'true' : 'false');
+  try {
+    const res = await fetch('/api/extract', { method: 'POST', body: fd });
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err);
+    }
+    const data = await res.json();
+    onResult(data);
+  } catch (err) {
+    els.status.textContent = '';
+    els.warnings.textContent = 'Lỗi: ' + (err.message || err);
+  } finally {
+    els.goBtn.disabled = false;
+  }
+}
+
+function onResult(data) {
+  state.moves = (data.moves || []).slice().sort((a, b) => a.n - b.n);
+  state.cursor = state.moves.length;  // show all by default
+  els.status.textContent = `Đã trích xuất ${state.moves.length} nước đi.`;
+  if (data.warnings && data.warnings.length) {
+    els.warnings.innerHTML = data.warnings.map(w => '⚠ ' + escapeHtml(w)).join('<br>');
+  }
+  renderMovesList();
+  els.slider.max = state.moves.length;
+  els.slider.value = state.cursor;
+  updateStats();
+  draw();
+
+  if (data.debug || data.debug_overlay_png_b64) {
+    els.debugDetails.hidden = false;
+    els.debugJson.textContent = JSON.stringify(data.debug || {}, null, 2);
+    if (data.debug_overlay_png_b64) {
+      els.debugImg.src = 'data:image/png;base64,' + data.debug_overlay_png_b64;
+      els.debugImg.hidden = false;
+    } else {
+      els.debugImg.hidden = true;
+    }
+  } else {
+    els.debugDetails.hidden = true;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderMovesList() {
+  if (!state.moves.length) {
+    els.movesList.innerHTML = '<div class="empty-hint">Không tìm thấy quân nào.</div>';
+    return;
+  }
+  const html = state.moves.map((m, idx) => {
+    const cls = ['m', m.color];
+    if (!m.ocr_supported) cls.push('unsupported');
+    if (idx + 1 === state.cursor) cls.push('active');
+    return `<span class="${cls.join(' ')}" data-idx="${idx}" title="OCR conf ${m.confidence}%">${m.n}.${m.go_coord}</span>`;
+  }).join('');
+  els.movesList.innerHTML = html;
+  els.movesList.querySelectorAll('.m').forEach(el => {
+    el.addEventListener('click', () => {
+      state.cursor = Number(el.dataset.idx) + 1;
+      els.slider.value = state.cursor;
+      draw();
+      updateStats();
+      renderMovesList();
+    });
+  });
+}
+
+// ---------- canvas board ----------
+function draw() {
+  const cv = els.board;
+  const ctx = cv.getContext('2d');
+  const W = cv.width, H = cv.height;
+  const pad = W * 0.05;
+  const inner = W - 2 * pad;
+  const cell = inner / (SIZE - 1);
+
+  // Board background.
+  ctx.fillStyle = '#dcb35c';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid lines.
+  ctx.strokeStyle = '#1f1408';
+  ctx.lineWidth = Math.max(1, W * 0.0014);
+  ctx.beginPath();
+  for (let i = 0; i < SIZE; i++) {
+    const v = pad + i * cell;
+    ctx.moveTo(pad, v); ctx.lineTo(pad + inner, v);
+    ctx.moveTo(v, pad); ctx.lineTo(v, pad + inner);
+  }
+  ctx.stroke();
+
+  // Hoshi (star points).
+  const star = [3, 9, 15];
+  ctx.fillStyle = '#1f1408';
+  for (const r of star) for (const c of star) {
+    const x = pad + c * cell, y = pad + r * cell;
+    ctx.beginPath();
+    ctx.arc(x, y, Math.max(2, cell * 0.07), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Coordinate labels.
+  const letters = "ABCDEFGHJKLMNOPQRST";
+  ctx.fillStyle = '#1f1408';
+  ctx.font = `${cell * 0.32}px ui-monospace,Menlo,monospace`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let i = 0; i < SIZE; i++) {
+    const x = pad + i * cell;
+    ctx.fillText(letters[i], x, pad - cell * 0.45);
+    ctx.fillText(letters[i], x, pad + inner + cell * 0.45);
+    const y = pad + i * cell;
+    const num = String(SIZE - i);
+    ctx.fillText(num, pad - cell * 0.6, y);
+    ctx.fillText(num, pad + inner + cell * 0.6, y);
+  }
+
+  // Stones up to cursor.
+  const visible = state.moves.slice(0, state.cursor);
+  // Resolve final position: if a point is replayed (e.g., captures + replays),
+  // last move at that point wins. Capture display we leave to extractor accuracy.
+  const occupiedBy = new Map();
+  for (const m of visible) {
+    const key = `${m.row},${m.col}`;
+    occupiedBy.set(key, m);
+  }
+  for (const m of occupiedBy.values()) {
+    const x = pad + m.col * cell;
+    const y = pad + m.row * cell;
+    drawStone(ctx, x, y, cell * 0.47, m.color);
+    if (els.numChk.checked) {
+      ctx.fillStyle = m.color === 'B' ? '#fff' : '#111';
+      ctx.font = `${cell * 0.34}px ui-monospace,Menlo,monospace`;
+      ctx.fillText(String(m.n), x, y);
+    }
+  }
+
+  // Last move highlight.
+  if (visible.length) {
+    const last = visible[visible.length - 1];
+    const x = pad + last.col * cell;
+    const y = pad + last.row * cell;
+    ctx.strokeStyle = '#ff5151';
+    ctx.lineWidth = Math.max(2, cell * 0.06);
+    ctx.beginPath(); ctx.arc(x, y, cell * 0.5, 0, Math.PI * 2); ctx.stroke();
+  }
+}
+
+function drawStone(ctx, x, y, r, color) {
+  const grad = ctx.createRadialGradient(x - r * 0.35, y - r * 0.35, r * 0.1, x, y, r);
+  if (color === 'B') {
+    grad.addColorStop(0, '#5d5d5d');
+    grad.addColorStop(1, '#000');
+  } else {
+    grad.addColorStop(0, '#fff');
+    grad.addColorStop(1, '#c8c8c8');
+  }
+  ctx.fillStyle = grad;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,.3)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+function updateStats() {
+  const total = state.moves.length;
+  const b = state.moves.filter(m => m.color === 'B').length;
+  const w = total - b;
+  els.totalStones.textContent = total;
+  els.bCount.textContent = b;
+  els.wCount.textContent = w;
+  els.moveLabel.textContent = `${state.cursor} / ${total}`;
+  if (state.cursor === 0) els.curTurn.textContent = '–';
+  else {
+    const m = state.moves[state.cursor - 1];
+    els.curTurn.textContent = (m.color === 'B' ? 'Đen' : 'Trắng') + ' ' + m.go_coord;
+  }
+}
+
+// Controls
+els.firstBtn.onclick = () => { state.cursor = 0; afterStep(); };
+els.prevBtn.onclick  = () => { if (state.cursor > 0) state.cursor--; afterStep(); };
+els.nextBtn.onclick  = () => { if (state.cursor < state.moves.length) state.cursor++; afterStep(); };
+els.lastBtn.onclick  = () => { state.cursor = state.moves.length; afterStep(); };
+els.slider.oninput   = () => { state.cursor = Number(els.slider.value); afterStep(false); };
+els.numChk.onchange  = draw;
+els.playBtn.onclick = () => {
+  if (state.playTimer) {
+    clearInterval(state.playTimer); state.playTimer = null;
+    els.playBtn.textContent = '▶';
+    return;
+  }
+  els.playBtn.textContent = '⏸';
+  state.playTimer = setInterval(() => {
+    if (state.cursor >= state.moves.length) {
+      clearInterval(state.playTimer); state.playTimer = null;
+      els.playBtn.textContent = '▶'; return;
+    }
+    state.cursor++; afterStep();
+  }, 350);
+};
+function afterStep(setSlider = true) {
+  if (setSlider) els.slider.value = state.cursor;
+  updateStats(); renderMovesList(); draw();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target && e.target.tagName === 'INPUT') return;
+  if (e.key === 'ArrowLeft')  els.prevBtn.click();
+  if (e.key === 'ArrowRight') els.nextBtn.click();
+  if (e.key === ' ')          { e.preventDefault(); els.playBtn.click(); }
+  if (e.key === 'Home')       els.firstBtn.click();
+  if (e.key === 'End')        els.lastBtn.click();
+});
+
+// Initial empty draw
+draw();
+updateStats();
+</script>
+</body>
+</html>
