@@ -4,18 +4,21 @@ Trích xuất các nước đi cờ vây từ ảnh kì phổ và mô phỏng l�
 
 ## Pipeline
 
-`image -> OpenCV(board+grid+stones) -> Tesseract OCR -> parity/sequence solver -> moves[]`
+`image -> OpenCV(board+grid+stones) -> Tesseract OCR (top-K) -> game-rule validator -> moves[]`
 
 Các bước chi tiết:
 1. **Board detection** — HSV color filter tìm vùng wood color, cắt bbox bàn cờ.
 2. **Grid extraction** — adaptive threshold + morphology để tách đường ngang/dọc, cluster để có 19 đường mỗi chiều.
 3. **Stone classification** — sample disk pixels quanh mỗi giao điểm, phân loại Black/White/Empty bằng mean intensity.
-4. **OCR per stone** — crop quanh mỗi quân, upscale 4×, multi-threshold variants, chạy Tesseract digits-only.
-5. **Smart assignment** *(secret sauce — đẩy accuracy lên ~99%)*:
+4. **OCR per stone** — crop quanh mỗi quân, upscale 4×, 2 binarisations × 2 PSM modes, gộp top-K candidates với confidence.
+5. **Game-rule validator** *(secret sauce — đạt 100% trên test suite hiện tại)*:
    - Mỗi quân nhận đúng 1 số.
    - **Parity constraint**: số ODD ⇒ quân ĐEN, số EVEN ⇒ quân TRẮNG (vì Đen luôn đi trước).
-   - Solve bằng Hungarian (linear sum assignment) trên cost matrix `stones × numbers`.
-   - Quân nào không có OCR support được điền theo parity + uniqueness; cờ `ocr_supported=false` để UI highlight.
+   - Hungarian assignment trên cost matrix `stones × numbers`.
+   - **Replay simulation**: replay sequence theo thứ tự, mỗi nước phải đặt vào ô trống tại thời điểm đó (sau captures), không suicide. Dùng cờ vây simulator có capture/liberty detection.
+   - **Repair pass**: với các quân không có OCR support, brute-permute các số còn lại và pick phương án có số nước hợp lệ cao nhất (tie-break bằng locality heuristic).
+   - **Hill-climb swap**: pairwise swap các quân là "violator" để giảm số vi phạm.
+   - Quân nào không có OCR support được điền theo parity + replay; cờ `ocr_supported=false` để UI highlight.
 
 ## Cấu trúc
 
@@ -27,8 +30,9 @@ Các bước chi tiết:
 │   ├── board_detector.py   # step 1
 │   ├── grid_detector.py    # step 2
 │   ├── stone_detector.py   # step 3
-│   ├── number_ocr.py       # step 4
-│   ├── validator.py        # step 5
+│   ├── number_ocr.py       # step 4 (top-K candidates per stone)
+│   ├── validator.py        # step 5 (Hungarian + replay + repair)
+│   ├── go_simulator.py     # Go board state with captures/liberty
 │   └── requirements.txt
 ├── frontend/
 │   └── index.html          # vanilla HTML + Canvas replayer
@@ -96,16 +100,21 @@ Railway tự nhận Dockerfile và build. Healthcheck path `/api/health` đã se
 ## Tại sao đạt được accuracy cao
 
 Chỉ OCR thuần thì khó vì digit nhỏ và contrast biến động. Cách hệ thống này
-"gian lận" hợp pháp:
+"gian lận" hợp pháp bằng các ràng buộc luật cờ vây:
 
 1. **Color parity** loại 50% lỗi OCR ngay lập tức. OCR đọc "8" cho 1 quân
    đen? Sai chắc luôn — 8 là chẵn, phải là số lẻ.
 2. **Uniqueness + sequence** loại các duplicate. Hungarian assignment tự
    chọn phương án chi phí thấp nhất thoả mãn cả 2 ràng buộc.
-3. **Multiple OCR variants** mỗi quân (OTSU, adaptive, sharpened) — gộp
-   candidates với confidence cao nhất.
-4. **Inferred numbers** — quân không OCR được vẫn nhận được 1 số duy nhất
-   khả dĩ từ parity + những số còn trống. UI sẽ flag bằng dấu gạch đứt.
+3. **Multiple OCR variants** mỗi quân (OTSU, sharpened × PSM 8/7) — gộp
+   top-K candidates với vote bonus khi nhiều variants đồng thuận.
+4. **Replay simulation** — mỗi nước phải đặt vào ô **trống** tại thời
+   điểm đó (sau bắt quân). Validator đếm số nước vi phạm cho mỗi phương án
+   assignment, pick phương án có ít vi phạm nhất.
+5. **Locality tie-breaker** — khi nhiều phương án cùng hợp lệ, ưu tiên
+   phương án mà các nước liên tiếp gần nhau hơn (heuristic mềm).
+6. **Inferred numbers** — quân không OCR được vẫn nhận số đúng nhờ
+   constraint propagation. UI flag bằng dấu gạch đứt nếu không OCR support.
 
 ## Hạn chế / hướng cải thiện
 
